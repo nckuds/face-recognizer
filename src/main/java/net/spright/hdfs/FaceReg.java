@@ -2,11 +2,16 @@ package net.spright.hdfs;
 
 import java.io.File;
 import java.io.FilenameFilter;
+import java.io.IOException;
 import java.nio.IntBuffer;
 import static org.bytedeco.javacpp.opencv_contrib.*;
 import static org.bytedeco.javacpp.opencv_core.*;
 import static org.bytedeco.javacpp.opencv_highgui.*;
 import static org.bytedeco.javacpp.opencv_imgproc.*;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+
 /**
  * I couldn't find any tutorial on how to perform face recognition using OpenCV and Java,
  * so I decided to share a viable solution here. The solution is very inefficient in its
@@ -28,26 +33,26 @@ import static org.bytedeco.javacpp.opencv_imgproc.*;
  * 2-jane_doe_2.png
  * ...and so on.
  *
- * Source: http://pcbje.com/2012/12/doing-face-recognition-with-javacv/
- *
  * @author Petter Christian Bjelland
+ * @author chihsuan
  */
 public class FaceReg {
-    public static void main(String[] args) {
-        String trainingDir = args[0];
-        Mat testImage = imread(args[1], CV_LOAD_IMAGE_GRAYSCALE);
-        resize(testImage, testImage, new Size(200, 200));
+    public static void main(String[] args) throws IOException {
         
-        File root = new File(trainingDir);
-
-        FilenameFilter imgFilter = new FilenameFilter() {
-            public boolean accept(File dir, String name) {
-                name = name.toLowerCase();
-                return name.endsWith(".jpg") || name.endsWith(".pgm") || name.endsWith(".png");
-            }
-        };
-
-        File[] imageFiles = root.listFiles(imgFilter);
+        final FileSystem fs = getFileSystem();
+        String trainingDir = ""; //args[0];
+        Mat testImage = imread(args[0], CV_LOAD_IMAGE_GRAYSCALE);
+        resize(testImage, testImage, new Size(200, 200));
+        File[] imageFiles = null;
+        try {
+          imageFiles = initImageList(fs, trainingDir); 
+          matchImg(imageFiles, testImage);
+        } catch (IOException ex) {
+           System.out.println(ex);
+        }
+    }
+    
+    private static void matchImg (File[] imageFiles, Mat testImage) {
 
         MatVector images = new MatVector(imageFiles.length);
 
@@ -55,7 +60,6 @@ public class FaceReg {
         IntBuffer labelsBuf = labels.getIntBuffer();
 
         int counter = 0;
-
         for (File image : imageFiles) {
             Mat img = imread(image.getAbsolutePath(), CV_LOAD_IMAGE_GRAYSCALE);
             resize(img, img, new Size(200, 200));
@@ -79,4 +83,28 @@ public class FaceReg {
 
         System.out.println("Predicted label: " + predictedLabel);
     }
+    
+        
+    private static File []  initImageList(FileSystem fs, String trainingDir) 
+            throws IOException {
+        File root = new File("hdfs://course/user/course");   
+        FilenameFilter imgFilter;
+        imgFilter = new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                name = name.toLowerCase();
+                return name.endsWith(".jpg") || name.endsWith(".pgm") || name.endsWith(".png");
+            }
+        };
+        File [] images = root.listFiles(imgFilter);
+         
+        return images;
+    }
+    
+    private static FileSystem getFileSystem() throws IOException {
+       Configuration configuration = new Configuration() {};
+       FileSystem fs = FileSystem.get(configuration);
+       return fs;
+    }
+    
 }
